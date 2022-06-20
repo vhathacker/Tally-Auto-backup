@@ -1,0 +1,229 @@
+
+;;U001B
+
+[System: UDF]
+	U001BIsBkp		: Logical	: 950
+	U001BDestin		: String	: 950
+	U001BDestin2	: String	: 952
+	U001BFormat		: String	: 951
+	U001BAutoDel	: Logical	: 951
+	U001BNumFold	: Number	: 950
+	U001BNumSFold	: Number	: 951
+	U001BOnOpen		: Logical	: 952
+	U001BOnClose	: Logical	: 953
+	U001BConfirm	: Logical	: 954
+	
+[#Part: Company MailingDetails]
+	Option	: U001BIsCmpBkpCfg	: @@UMJIsVouchedkkk428
+	[!Part: U001BIsCmpBkpCfg]
+		Add	: Bottom Line	: At End	: U001BIsBkp
+		[Line: U001BIsBkp]
+			Fields	: Medium Prompt, U001BIsBkp
+			Local	: Field	: Medium Prompt	: Set as	: "Enable 'U001' Auto-backup?"
+			[Field: U001BIsBkp]
+				Use		: Logical Field
+				Storage	: U001BIsBkp
+				Style	: Normal
+				Sub Form	: U001BBkpSet	: $$Value
+
+[Report: U001BBkpSet]
+	Title	: "Backup Settings"
+	Form	: U001BBkpSet
+	[Form: U001BBkpSet]
+		Part	: U001BBkpSet, U001BAutoDel, U001AYesNo
+		Horizontal Align	: Left
+		Background	: @@SV_STATISTICS
+		Local	: Field	: Default	: Style	: Normal
+		[Part: U001BBkpSet]
+			Lines	: U001BDestin, U001BDestin2, U001BFormat
+			Space Bottom	: 0.5
+			[Line: U001BDestin]
+				Fields		: Long Prompt, U001BDestin
+				Local		: Field	: Long Prompt	: Set as	: "Backup Location (blank for data folder): "
+				[Field: U001BDestin]
+					Use			: Name Field
+					Storage		: U001BDestin
+					Validate	: $$IsEmpty:$$Value OR $$IsDirectory:$$Value
+					Case		: Normal
+					Width		: @@LongWidth * 1.2
+					Max			: 255
+					Skip		: NOT #U001AIsBkp
+			[Line: U001BDestin2]
+				Fields		: Long Prompt, U001BDestin2
+				Local		: Field	: Long Prompt	: Set as	: "Additional Backup Location if any : "
+				[Field: U001BDestin2]
+					Use			: Name Field
+					Storage		: U001BDestin2
+					Validate	: $$IsEmpty:$$Value OR ($$Value != #U001BDestin AND $$IsDirectory:$$Value)
+					Case		: Normal
+					Width		: @@LongWidth * 1.2
+					Max			: 255
+					Skip		: NOT #U001AIsBkp
+			[Line: U001BFormat]
+				Use		: U001AFormat
+				Local	: Field	: U001AFormat	: Storage	: U001BFormat
+				Local	: Field	: U001AFormat	: Skip		: No
+		[Part: U001BAutoDel]
+			Use		: U001AAutoDel
+			Local	: Field	: U001AIsAutoDel	: Skip		: No
+			Local	: Field	: U001ADelDays		: Skip		: No
+			Local	: Field	: U001ADelSubFlds	: Skip		: No
+			Local	: Field	: Default			: Delete	: Storage
+			Local	: Field	: U001AIsAutoDel	: Add		: Storage	: U001BAutoDel
+			Local	: Field	: U001ADelDays		: Add		: Storage	: U001BNumFold
+			Local	: Field	: U001ADelSubFlds	: Add		: Storage	: U001BNumSFold
+			Local	: Field	: U001AIsAutoDel	: Delete	: Notify
+			Local	: Field	: U001AIsAutoDel	: Add		: Notify	: U001AIsAutoDelNotify	: $$Value AND NOT $$IsEmpty:#U001BDestin2
+		[Part: U001AYesNo]
+			Lines	: U001BOnOpen, U001BOnClose, U001BConfirm
+			Space Top	: 0.5
+			[Line: U001BOnOpen]
+				Fields	: Long Prompt, U001BOnOpen
+				Local	: Field	: Long Prompt	: Set as	: "Backup on Opening Company?"
+				[Field: U001BOnOpen]
+					Use		: Logical Field
+					Storage	: U001BOnOpen
+			[Line: U001BOnClose]
+				Fields	: Long Prompt, U001BOnClose
+				Local	: Field	: Long Prompt	: Set as	: "Backup on Closing Company?"
+				[Field: U001BOnClose]
+					Use		: Logical Field
+					Storage	: U001BOnClose
+			[Line: U001BConfirm]
+				Fields	: Long Prompt, U001BConfirm
+				Local	: Field	: Long Prompt	: Set as	: "Confirm before backup?"
+				[Field: U001BConfirm]
+					Use		: Logical Field
+					Storage	: U001BConfirm
+
+[System: Formulae]
+	U001BIsBkpOpen		: $U001BIsBkp:Company:##SVCurrentCompany AND $U001BOnOpen:Company:##SVCurrentCompany AND @@UMJIsVouchedkkk428
+	U001BIsBkpClose		: $U001BIsBkp:Company:##SVCurrentCompany AND $U001BOnClose:Company:##SVCurrentCompany AND @@UMJIsVouchedkkk428
+	U001BCmpFolder		: $Destination:Company:##SVCurrentCompany
+	U001BCmpDestinBK	: $U001BDestin:Company:##SVCurrentCompany
+	U001BCmpDestinBkp	: IF $$ExactMatch:($$StringPart:@@U001BCmpDestinBK:(($$StringLength:@@U001BCmpDestinBK)-1):1):"\" THEN @@U001BCmpDestinBK ELSE @@U001BCmpDestinBK + "\"
+	[#Function: Tally MAIN]
+		U001BBackupEnd	: Call	: U001BBkpSch
+	[Function: U001BBkpSch]
+		10	: Walk Collection	: U001BIsBkpEnd
+		20	: 	If	: $U001BIsBkp
+		30	: 		Set	: SVCurrentCompany	: $Name
+		40	: 		Call	: U001BCmpBkp
+		50	: 	End If
+		60	: End Walk
+		[Collection: U001BIsBkpEnd]
+			Type	: Company
+			Fetch	: Name, U001BIsBkp
+
+[System: Event]
+	U001BBackupOpen		: Load Company	: @@U001BIsBkpOpen	: Call	: U001BCmpBkp
+	U001BBackupClose	: Close Company	: @@U001BIsBkpClose	: Call	: U001BCmpBkp
+
+[Function: U001BCmpBkp]
+	Variable	: vCurBackup	: String
+	Variable	: vFormat		: String	: ($U001BFormat:Company:##SVCurrentCompany)
+	Variable	: vMachineDate	: Date		: $$MachineDate
+	Variable	: vMachineTime	: String	: $$MachineTime:Yes
+	Local Formula	: IsZipBackup		: ##vFormat = "ZIP" AND @@U001AIsZipSupported
+	Local Formula	: FirstLocation		: IF $$IsEmpty:@@U001BCmpDestinBK THEN @@U001BCmpFolder + "\ABK" ELSE @@U001BCmpDestinBkp
+	Local Formula	: SecondLocation		: $U001BDestin2:Company:##SVCurrentCompany
+	10	: If	: $U001BConfirm:Company:##SVCurrentCompany
+	20	: 	Query Box	: "Do you want to backup Company?":Yes
+	30	: 	Do If		: (NOT $$LastResult)	: Return
+	40	: End If
+	50	: Call	: U001BCmpBkp_Action:@FirstLocation
+	60	: If	: ($$IsDirectory:@SecondLocation)
+	70	: 	If	: @@U001AIsCopySupported
+	80	: 		Call	: U001AAltCopy:##vCurBackup:@SecondLocation:@IsZipBackup
+	90	: 	Else
+	100	: 		Call	: U001BCmpBkp_Action:@SecondLocation
+	110	: 	End If
+	120	: End If
+
+[Function: U001BCmpBkp_Action]
+	Parameter	: ParamDestination	: String
+	Variable	: vDestination	: String
+	Local Formula	: MachineTime		: $$U001ATimeStamp:##vMachineTime
+	Local Formula	: IsZipBackup		: ##vFormat = "ZIP" AND @@U001AIsZipSupported
+	50	: Set	: vDestination		: $$Sprintf:"%s\%s\%s_%s":##ParamDestination:##vMachineDate:@MachineTime:$$CmpUserName
+	60	: If	: @IsZipBackup
+	70	: 	Set	: vCurBackup	: $$U001BCmpBkpZip
+	80	: Else
+	90	: 	Set	: vCurBackup	: $$U001BCmpBkpTbk
+	100	: End If
+	[Function: U001BCmpBkpZip]
+		Variable	: vZipPath	: String	: $$Sprintf:"%s.zip":##vDestination
+		10	: Set Log Off
+		20	: 	Start Zip	: ##vZipPath
+		30	: 		Zip Add Path	:  @@U001BCmpFolder
+		40	: 	End Zip
+		50	: Set Log On
+		60	: Log	: "Company Backed up! " + ##vFormat
+		70	: Do If	: ($U001BAutoDel:Company:##SVCurrentCompany)	: Call	: U001BAutoDelZip
+		80	: Return	: ##vZipPath
+	[Function: U001BCmpBkpTbk]
+		Variable	: vBackupVar	: String
+		Variable	: vZipPath	: String	: $$Sprintf:"%s.zip":##vDestination
+		10	: Set	: vBackupVar	: $$FullListEx:"":U001BCmpBkpTbk:##vDestination:$SourceFolder:$Name:$CompanyNumber
+		20	: Backup Company	: ""	: ##vBackupVar
+		30	: If	: ##vFormat = "Zipped TBK" AND @@U001AIsZipSupported
+		40	: 	Call	: U001BCmpBkpTbkZip
+		70	: 	Do If	: ($U001BAutoDel:Company:##SVCurrentCompany AND ##ParamDestination != @@U001BCmpFolder AND $$IsDirectory:##ParamDestination)	: Call	: U001BAutoDelZip
+		80	: Else
+		90	: 	Do If	: ($U001BAutoDel:Company:##SVCurrentCompany AND ##ParamDestination != @@U001BCmpFolder AND $$IsDirectory:##ParamDestination)	: Call	: U001BAutoDelTbk
+		100	: End If
+		110	: Log		: "Company Backed up! " + ##vFormat
+		120	: Return	: IF ##vFormat CONTAINS "Zip" THEN ##vZipPath ELSE ##vDestination
+		[Function: U001BCmpBkpTbkZip]
+			40	: Start Zip	: ##vZipPath
+			50	: 	Zip Add Path	: ##vDestination
+			60	: End Zip
+			70	: Delete File	: ##vDestination
+		[Collection: U001BCmpBkpTbk]
+			Object	: U001BCmpBkpTbk
+			[Object: U001BCmpBkpTbk]
+				Name			: ##SVCurrentCompany
+				CompanyNumber	: $CompanyNumber:Company:##SVCurrentCompany
+				SourceFolder	: $$StringPart:@@U001BCmpFolder:0:(($$StringLength:@@U001BCmpFolder)-6)
+	[Function: U001BAutoDelZip]
+		Variable	: Folder	: String	: ##ParamDestination
+		Variable	: SubFolder	: String
+		Variable	: vNumFolders	: Number	: $U001BNumFold:Company:##SVCurrentCompany
+		Variable	: vNumSubFolder	: Number	: $U001BNumSFold:Company:##SVCurrentCompany
+		Local Formula	: DelSubFolder	: ##SubFolder + '\' + $Name
+		00	: Do If	: (NOT $U001BAutoDel:Company:##SVCurrentCompany OR ##Folder = @@U001BCmpFolder OR NOT $$IsDirectory:##ParamDestination)	: Return
+		10	: Walk Collection	: U001ACheckFoldersZip
+		20	: 	Set	: SubFolder	: ##Folder + '\' + $Name
+		30	: 	If		: $IsDirectory AND ##vNumFolders > 0 AND ($$LoopIndex) > ##vNumFolders
+		40	: 		Delete File:##SubFolder
+		50	: 	Else
+		70	: 		If	: $IsDirectory AND ##vNumSubFolder > 0
+		80	: 			Walk Collection	: U001ACheckSubFoldersZip
+		90	: 				Do If	: (NOT $IsDirectory AND ($$LoopIndex) > ##vNumSubFolder)	: Delete File	: @DelSubFolder
+		100	: 			End Walk
+		120	: 		End If
+		130	: 	End If
+		140	: End Walk
+	[Function: U001BAutoDelTbk]
+		Variable	: Folder	: String	: ##ParamDestination
+		Variable	: SubFolder	: String
+		Variable	: vNumFolders	: Number	: $U001BNumFold:Company:##SVCurrentCompany
+		Variable	: vNumSubFolder	: Number	: $U001BNumSFold:Company:##SVCurrentCompany
+		Local Formula	: DelSubFolder	: ##SubFolder + '\' + $Name
+		00	: Do If	: (NOT $U001BAutoDel:Company:##SVCurrentCompany OR ##Folder = @@U001BCmpFolder OR NOT $$IsDirectory:##ParamDestination)	: Return
+		10	: Walk Collection	: U001ACheckFoldersTbk
+		20	: 	Set	: SubFolder	: ##Folder + '\' + $Name
+		30	: 	If		: $IsDirectory AND ##vNumFolders > 0 AND ($$LoopIndex) > ##vNumFolders
+		40	: 		Delete File:##SubFolder
+		50	: 	Else
+		70	: 		If	: $IsDirectory AND ##vNumSubFolder > 0
+		80	: 			Walk Collection	: U001ACheckSubFoldersTbk
+		90	: 				Do If	: ($IsDirectory AND ($$LoopIndex) > ##vNumSubFolder)	: Delete File	: @DelSubFolder
+		100	: 			End Walk
+		120	: 		End If
+		130	: 	End If
+		140	: End Walk
+
+
+
+

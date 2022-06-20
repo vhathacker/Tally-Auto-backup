@@ -1,0 +1,11 @@
+
+[System: Formula]
+	UMJIsVouchedkkk428	: Yes;;($$MachineDate) <= ($$Date:"01/12/2016")
+	U001Password		: "";;Sepcify your password (optional) for schedule backup
+
+
+[Include: AutoBackup.txt];;A
+[Include: CMPAutoBackup.txt];;B
+
+
+

@@ -1,0 +1,769 @@
+;;U001A
+[System: Formula]
+	U001AMaxTasks	: 15
+	U001ATmpFile	: "U001AABKCr.cmd"
+	U001ATmpFileD	: "U001AABKDel.cmd"
+	U001AVarFile	: "U001AABK.pvf"
+	U001ATaskName	: "U001AABK"
+	U001ATallyRel		: $$Number:$$ProdInfo:ProdReleaseAsStr
+	U001AIsZipSupported	: @@U001ATallyRel >= 4.7
+	U001AIsDelSupported	: @@U001ATallyRel >= 3.4
+	U001AIsCopySupported: @@U001ATallyRel >= 4
+	
+[System: Variable]
+	Variable		: U001ABkp
+[Variable: U001ABkp]
+	Variable	: IsBackup				: Logical
+	Variable	: Source, Destination, Destination2, Format	: String
+	Variable	: AutoDelete			: Logical
+	Variable	: NumFolders, NumSubFolder	: Number
+	List Var	: U001ASch
+	List Var	: U001ACmp
+	;;Schedule Variables
+	[Variable: U001ACmp]
+		Variable	: Source	: String
+		List Var	: U001ACmpList
+		[Variable: U001ACmpList]
+			Variable	: Name, CompanyNumber	: String
+	[Variable: U001ASch]
+		Variable	: Name				: String
+		Variable	: Schedule			: String
+		Variable	: MON, TUE, WED, THU, FRI, SAT, SUN	: Logical
+		Variable	: StartTime			: String
+		Variable	: RepeatInterval	: Number
+
+	
+[Function: U001ATimeStamp]
+	Parameter		: Time	: String
+	Local Formula	: TimeHour		: ($$StringWordEx:##Time:":":1)
+	Local Formula	: TimeMinute	: ($$StringWordEx:##Time:":":2)
+	Local Formula	: TimeSecond	: ($$StringWordEx:##Time:":":3)
+	10	: Return	: $$Sprintf:"%s-%s-%s":@TimeHour:@TimeMinute:@TimeSecond
+[#Menu: Configuration]
+	Add		: Button	: U001ABackup
+	[Button: U001ABackup]
+		Key		: Ctrl+B
+		Title	: "Auto Backup"
+		Action	: Call	: U001ABackupQ
+		Inactive	: NOT @@UMJIsVouchedkkk428
+[Function: U001ABackup]
+	Variable	: vCurBackup	: String
+	Variable	: vMachineTime	: String	: $$MachineTime:Yes
+	Variable	: vMachineDate	: String	: $$MachineDate
+	Variable	: vVarFileName	: String	: ($$ApplicationPath) + "\" + @@U001AVarFile
+	Local Formula	: IsZipBackup	: (##U001ABkp.Format Contains "ZIP") AND @@U001AIsZipSupported
+	10	: Do If	: ($$IsFileExists:##vVarFileName)	: Load Variables	: ##vVarFileName	: U001ABkp
+	20	: Do If	: (NOT ##U001ABkp.IsBackup OR NOT @@UMJIsVouchedkkk428)	: Return	: False
+	30	: Call	: U001ABackup_Action:##U001ABkp.Destination
+	31	: If	: ($$IsDirectory:##U001ABkp.Destination2)
+	32	: 	If	: @@U001AIsCopySupported
+	40	: 		Call	: U001AAltCopy:##vCurBackup:##U001ABkp.Destination2:@IsZipBackup
+	50	: 	Else
+	60	: 		Call	: U001ABackup_Action:##U001ABkp.Destination2
+	70	: 	End If
+	80	: End If
+
+[Function: U001ABackup_Action]
+	Parameter	: ParamDestination	: String
+	Variable	: vBackupVar	: String
+	Variable	: vDestination	: String
+	Local Formula	: IsZipBackup	: (##U001ABkp.Format Contains "ZIP") AND @@U001AIsZipSupported
+	20	: Do If	: (NOT $$IsDirectory:##ParamDestination)	: Return	: False
+	30	: If	: ##U001ABkp.Format EQUALS "ZIP"
+	40	: 	Set	: vCurBackup	: $$U001ABackupZip
+	50	: Else
+	90	: 	Set	: vCurBackup	: $$U001ABackupTBK
+	100	: End If	
+;;ZIP Backup
+[Function: U001ABackupZip]
+	Local Formula	: MachineTime	: $$U001ATimeStamp:##vMachineTime
+	Variable	: ID1	: Number
+	List Var	: lvFiles	: String
+	Variable	: vDestination1, vDestFolder, vFile	: String
+	00	: Set	: vDestFolder	: $$Sprintf:"%s\%s\%s\":##ParamDestination:##vMachineDate:@MachineTime
+	10	: Set	: vDestination	: $$Sprintf:"%s%s.zip":##vDestFolder:@MachineTime
+	20	: For Each	: Source	: U001ABkp.U001ACmp
+	21	: 	Set		: vFile		: $$Sprintf:"%s_%s.zip":@MachineTime:$$LoopIndex
+	30	: 	Set		: vDestination1	: $$Sprintf:"%s%s":##vDestFolder:##vFile
+	40	: 	List Add	: lvFiles	: ##vFile	: ##vFile
+	50	: 	Start Zip	: ##vDestination1
+	60	: 		Set		: ID1	: $$ListIndex:U001ABkp.U001ACmp:##Source
+	70	: 		Set		: U001ABkp.Source	: ##Source
+	80	: 		Walk Collection	: U001ABackupCompaniesOnDisk
+	90	: 			Do If	: ($$ListFind:U001ABkp.U001ACmp[##ID1].U001ACmpList:$CompanyNumber)	: Zip Add Path	: (##U001ABkp.Source + "\" + ($$String:$CompanyNumber))
+	100	: 		End Walk
+	110	: 	End Zip
+	120	: End For
+	130	: If	: ($$ListCount:lvFiles > 0)
+	140	: 	Start Zip	: ##vDestination
+	150	: 		For Each	: File	: lvFiles
+	160	: 			Zip Add Path	: (##vDestFolder + ##File)
+	170	: 		End For
+	180	: 	End Zip
+	190	: 	For Each	: File	: lvFiles
+	200	: 		Delete File	: (##vDestFolder + ##File)
+	210	: 	End For
+	220	: End If
+	230	: Do If		: (##U001ABkp.AutoDelete AND $$IsDirectory:##ParamDestination AND @@U001AIsDelSupported)	: Call		: U001ADeleteFoldersZip
+	240	: Return	: ##vDestination
+	[Collection: U001ABackupCompaniesOnDisk]
+		Title		: $$LocaleString:"List of Companies"
+		Type        : Company on Disk
+		Child of    : ##U001ABkp.Source
+		Filter		: U001ABkpIsNotVault
+		Fetch		: Name, CompanyNumber
+	[Function: U001ADeleteFoldersZip]
+		Parameter	: Folder	: String	: ##ParamDestination
+		Variable	: SubFolder	: String
+		Variable	: vNumFolders	: Number	: ##U001ABkp.NumFolders
+		Variable	: vNumSubFolder	: Number	: ##U001ABkp.NumSubFolder
+		Local Formula	: DelSubFolder	: ##SubFolder + '\' + $Name
+		01	: Do If		: NOT ##U001ABkp.AutoDelete		: Return
+		10	: Walk Collection	: U001ACheckFoldersZip
+		20	: 	Set	: SubFolder	: ##Folder + '\' + $Name
+		30	: 	If		: $IsDirectory AND ##U001ABkp.NumFolders > 0 AND ($$LoopIndex) > ##U001ABkp.NumFolders
+		40	: 		Delete File:##SubFolder
+		50	: 	Else
+		70	: 		If	: $IsDirectory AND ##U001ABkp.NumSubFolder > 0
+		80	: 			Walk Collection	: U001ACheckSubFoldersZip
+		90	: 				Do If	: (NOT $IsDirectory AND ($$LoopIndex) > ##U001ABkp.NumSubFolder)	: Delete File	: @DelSubFolder
+		100	: 			End Walk
+		120	: 		End If
+		130	: 	End If
+		140	: End Walk
+		[Collection: U001ACheckFoldersZip]
+			Data Source	: Directory	: ##Folder
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACheckFoldersZip
+			[System: Formula]
+				U001ACheckFoldersZip		: $Name NOT EQUALS '..' AND $IsDirectory
+				U001ACheckSubFoldersZip		: $Name NOT EQUALS '..' AND NOT $IsDirectory
+		[Collection: U001ACheckSubFoldersZip]
+			Data Source	: Directory	: ##SubFolder
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACheckSubFoldersZip
+
+;;TBK/Zipped TBK	backup
+[Function: U001ABackupTbk]
+	Variable	: ID1	: Number
+	Local Formula	: MachineTime	: $$U001ATimeStamp:##vMachineTime
+	Local Formula	: vBackupVar	: IF $$IsEmpty:##vBackupVar THEN "" ELSE ##vBackupVar + ","
+	Local Formula	: TargetFile	: $$Sprintf:"%s.zip":##vDestination
+	Local Formula	: BackupSource	: ##U001ABkp.Source
+	Variable	: BSEP	: String	: $$StrByCharCode:3
+	Variable	: vDestination1	: String
+	10	: Set	: vDestination	: $$Sprintf:"%s\%s\%s":##ParamDestination:##vMachineDate:@MachineTime
+	20	: For Each	: Source	: U001ABkp.U001ACmp
+	30	: 	Set		: ID1	: $$ListIndex:U001ABkp.U001ACmp:##Source
+	40	: 	Set		: vDestination1	: $$Sprintf:"%s\Source%s":##vDestination:$$LoopIndex
+	50	: 	Set		: U001ABkp.Source	: ##Source
+	60	: 	Set		: vBackupVar	: $$FullListEx:"":U001ABackupCompaniesOnDiskBKP:##vDestination1:@BackupSource:$Name:$CompanyNumber
+	70	: 	Backup Company		: ""	: ##vBackupVar
+	80	: End For
+	90	: If	: ##U001ABkp.Format EQUALS "Zipped TBK"
+	91	: 	Start Zip	: @TargetFile
+	92	: 		Zip Add Path	: ##vDestination
+	93	: 	End Zip
+	100	: 	Do If		: ($$IsFileExists:@TargetFile)	: Delete File	: ##vDestination
+	110	:	Do If		: (##U001ABkp.AutoDelete AND $$IsDirectory:##ParamDestination AND @@U001AIsDelSupported)	: Call	: U001ADeleteFoldersZip
+	111	: 	Return		: @TargetFile
+	120	: Else
+	130	: 	Do If		: (##U001ABkp.AutoDelete AND $$IsDirectory:##ParamDestination AND @@U001AIsDelSupported)	: Call	: U001ADeleteFoldersTbk
+	131	: 	Return		: ##vDestination
+	140	: End If
+	[Collection: U001ABackupCompaniesOnDiskBKP]
+		Type        : Company on Disk
+		Child of    : ##U001ABkp.Source
+		Fetch		: Name, CompanyNumber
+		Filter		: U001ABkpIsNotVault, U001ABackupCompaniesOnDiskBKP
+		[System: Formula]
+			U001ABackupCompaniesOnDiskBKP	: $$ListFind:U001ABkp.U001ACmp[##ID1].U001ACmpList:$CompanyNumber
+	[Function: U001ADeleteFoldersTbk]
+		Parameter	: Folder	: String	: ##ParamDestination
+		Variable	: SubFolder	: String
+		Variable	: vNumFolders	: Number	: ##U001ABkp.NumFolders
+		Variable	: vNumSubFolder	: Number	: ##U001ABkp.NumSubFolder
+		Local Formula	: DelSubFolder	: ##SubFolder + '\' + $Name
+		01	: Do If		: NOT ##U001ABkp.AutoDelete		: Return
+		10	: Walk Collection	: U001ACheckFoldersTbk
+		20	: 	Set	: SubFolder	: ##Folder + '\' + $Name
+		30	: 	If		: $IsDirectory AND ##U001ABkp.NumFolders > 0 AND ($$LoopIndex) > ##U001ABkp.NumFolders
+		40	: 		Delete File:##SubFolder
+		50	: 	Else
+		70	: 		If	: $IsDirectory AND ##U001ABkp.NumSubFolder > 0
+		80	: 			Walk Collection	: U001ACheckSubFoldersTbk
+		90	: 				Do If	: ($IsDirectory AND ($$LoopIndex) > ##U001ABkp.NumSubFolder)	: Delete File	: @DelSubFolder
+		100	: 			End Walk
+		120	: 		End If
+		130	: 	End If
+		140	: End Walk
+		[Collection: U001ACheckFoldersTbk]
+			Data Source	: Directory	: ##Folder
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACheckFoldersTbk
+			[System: Formula]
+				U001ACheckFoldersTbk	: $Name NOT EQUALS '..' AND $IsDirectory
+		[Collection: U001ACheckSubFoldersTbk]
+			Data Source	: Directory	: ##SubFolder
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACheckFoldersTbk
+[Function: U001AAltCopy]
+	Parameter	: CurBackup		: String
+	Parameter	: AltLocation	: String
+	Parameter	: IsZipBackup	: Logical
+	Variable	: vLocationPaste	: String
+	10	: Do If	: (NOT $$IsDirectory:##AltLocation)	: Return
+	30	: Set	: vLocationPaste	: $$Sprintf:"%s\%s":##AltLocation:##vMachineDate
+	40	: Do If	: (not $$IsDirectory:##vLocationPaste)	: Make Dir	: ##vLocationPaste
+	50	: If	: $$IsDirectory:##CurBackup
+	60	: 	Call	: U001ACopyFolder:##CurBackup:##vLocationPaste
+	70	: Else
+	80	: 	Copy File	: ##vLocationPaste	: ##CurBackup
+	90	: End If
+	100	: If	: (##U001ABkp.AutoDelete AND $$IsDirectory:##AltLocation AND @@U001AIsDelSupported)
+	110	: 	If	: ##IsZipBackup
+	120	: 		Call	: U001ADeleteFoldersZip:##AltLocation
+	130	: 	Else
+	140	: 		Call	: U001ADeleteFoldersTbk:##AltLocation
+	150	: 	End If
+	160	: End If
+	[Function: U001ACopyFolder]
+		Parameter	: Folder		: String
+		Parameter	: Destination	: String
+		Variable	: Folder2		: String
+		Variable	: Loc1, Loc2	: String
+		10	: Do If	: (NOT $$IsDirectory:##Destination)	: Return
+		20	: Set	: Loc1	: ##Destination + "\" + $$StringWordEx:##Folder:"\":Last
+		30	: Do If	: (NOT $$IsDirectory:##Loc1)	: Make Dir	: ##Loc1
+		40	: Walk Collection	: U001ACopyFolder1
+		50	: 	If	: $IsDirectory
+		60	: 		Set	: Loc2		: ##Loc1 + "\" + $Name
+		70	: 		Set	: Folder2	: ##Folder + "\" + $Name
+		80	: 		Do If	: (NOT $$IsDirectory:##Loc2)	: Make Dir	: ##Loc2
+		90	: 		Walk Collection	: U001ACopyFolder2
+		100	: 			Do If	: (NOT $IsDirectory)	: Copy File	: ##Loc2	: (##Folder2 + "\" + $Name)
+		110	: 		End Walk
+		120	: 	Else
+		130	: 		Copy File	: ##Loc1	: (##Folder + "\" + $Name)
+		140	: 	End If
+		150	: End Walk
+		[Collection: U001ACopyFolder1]
+			Data Source	: Directory	: ##Folder
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACopyFolder
+		[Collection: U001ACopyFolder2]
+			Data Source	: Directory	: ##Folder2
+			Fetch		: Name, IsDirectory, LastModifiedDate, LastModifiedTime
+			Sort		: @@Default	: -$LastModifiedDate, -$LastModifiedTime
+			Filter		: U001ACopyFolder
+			[System: Formula]
+				U001ACopyFolder	: $Name NOT EQUALS '..'
+
+
+
+;;Save Variables on Fetching info from users
+[Function: U001ABackupLV]
+	List Var	: lvCoList	: String
+	60	: If	: NOT ##U001ABkp.IsBackup
+	70	: 	Call	: U001AUnScheduleAll
+	80	: Else
+	90	: 	Call	: U001ASchedule
+	100	: End If
+
+;;UnSchedule
+[Function: U001AUnScheduleAll]
+	Parameter	: IsXP	: Logical	: No;($$Number:$$WindowsVersion) < 6
+	Variable	: FileName	: String	: @@U001ATmpFileD
+	Local Formula	: TaskName		: @@U001ATaskName
+	Local Formula	: TaskNumber	: $$LoopIndex
+	Local Formula	: TName			: $$Sprintf:"%s%s":@TaskName:@TaskNumber
+	10	: Open File	: ##FileName	: Text	: Write	: ASCII
+	20	: 	Truncate File
+	30	: 	While	: $$LoopIndex <= @@U001AMaxTasks
+	40	: 		Write File Line	: IF ##IsXP THEN ($$Sprintf:"SCHTASKS /DELETE /TN %s":@TName) ELSE ($$Sprintf:"SCHTASKS /DELETE /TN %s /F":@TName)
+	50	: 	End While
+	60	: Close Target File
+	70	: Browse Url Ex	: ##FileName	: Yes
+	80	: Delete File	: ##FileName
+;;Schedule
+[Function: U001ASchedule]
+	Local Formula	: Quot				: $$StrByCharCode:34
+	Local Formula	: AppPath			: ($$ApplicationPath)
+	Local Formula	: TallyPath			: IF ##IsXP THEN $$Sprintf:"%s%s%s\tally.exe%s":@Quot:@Quot:@AppPath:@Quot ELSE $$Sprintf:"%s'%s\tally.exe'":@Quot:@AppPath
+	Variable	: FileName	: String	: @@U001ATmpFile
+	Variable	: vMachineTime	: String	: $$MachineTime:Yes
+	10	: Query Box	: "Start Schedule now?"	: Yes
+	20	: Do If	: NOT $$LastResult	: Return	: False
+	21	: Call	: U001AUnScheduleAll
+	30	: Open File	: ##FileName	: Text	: Write	: ASCII
+	40	: 	Truncate File
+	50	: 	For Each	: ITR	: U001ABkp.U001ASch
+	60	: 		Write File Line	: $$U001ASchGetTask:##ITR
+	70	: 	End For
+	190	: Close Target File
+	200	: Browse Url Ex	: ##FileName	: Yes
+	230	: Msg Box		: "Info!!"	: "Created Tally Backup Schedule"
+	220	: Delete File	: ##FileName
+	[Function: U001ASchGetTask]
+		Parameter	: TN	: String
+		Parameter	: IsXP	: Logical	: No;($$Number:$$WindowsVersion) < 6
+		Variable	: vSchStr, Schedule, StartTime	: String	: ""
+		Variable	: vIdx, RepeatInterval	: Number	: 0
+		Variable	: FileName	: String	: @@U001ATmpFile
+		Local Formula	: Quot				: $$StrByCharCode:34
+		Local Formula	: QuotSingle		: "'"
+		Local Formula	: AppPath			: ($$ApplicationPath)
+		Local Formula	: TallyPath			: IF ##IsXP THEN $$Sprintf:"%s%s%s\tally.exe%s":@Quot:@Quot:@AppPath:@Quot ELSE $$Sprintf:"%s'%s\tally.exe'":@Quot:@AppPath
+		Local Formula	: TaskName		: $$Sprintf:"%s%s":@@U001ATaskName:##ITR
+		Local Formula	: NextMinutesA	: IF ($$Number:$$StringWordEx:##vMachineTime:":":Last) + 2 > 59 THEN 0 ELSE ($$Number:$$StringWordEx:##vMachineTime:":":Last) + 2
+		Local Formula	: NextHoursA	: IF ($$Number:$$StringWordEx:##vMachineTime:":":Last) + 2 > 59 THEN $$Number:($$StringWordEx:##vMachineTime:":":First) + 1 ELSE $$Number:($$StringWordEx:##vMachineTime:":":First)
+		Local Formula	: NextHours		: $$ZeroFill:@NextHoursA:2
+		Local Formula	: NextMinutes	: $$ZeroFill:@NextMinutesA:2
+		Local Formula	: NextTime		: $$Sprintf:"%s:%s":@NextHours:@NextMinutes
+		Returns		: String
+		;;"Daily At", "Repeated", "Weekly", "On Idle", "On Logon"
+		20	: 	Set		: vIdx	: $$ListIndex:U001ABkp.U001ASch:##TN
+		30	: 	Set		: vSchStr	: ""
+		40	: 	Set		: vSchStr	: IF ##IsXP THEN ($$Sprintf:"SCHTASKS /CREATE /RU SYSTEM /TN %s":@TaskName) ELSE ($$Sprintf:"SCHTASKS /CREATE /F /TN %s":@TaskName)
+		50	: 	Set		: Schedule	: $$ListValue:U001ABkp.U001ASch:##TN:Schedule
+		60	: 	Set		: StartTime	: $$ListValue:U001ABkp.U001ASch:##TN:StartTime
+		70	: 	Set		: RepeatInterval	: $$ListValue:U001ABkp.U001ASch:##TN:RepeatInterval
+		80	: 	Set		: vSchStr	: IF ##Schedule = "Daily At" THEN ($$Sprintf:"%s /SC DAILY /ST %s:00":##vSchStr:##StartTime) ELSE + 
+										IF ##Schedule = "Repeated" THEN ($$Sprintf:"%s /SC MINUTE /MO %s /ST %s":##vSchStr:##RepeatInterval:@NextTime) ELSE +
+										IF ##Schedule = "Weekly" THEN ($$Sprintf:"%s /SC WEEKLY /D %s /ST %s:00":##vSchStr:$$U001ADays:##StartTime) ELSE +
+										IF ##Schedule = "On Idle" THEN ($$Sprintf:"%s /SC ONIDLE /I 1":##vSchStr) ELSE +
+										IF ##Schedule = "On Logon" THEN ($$Sprintf:"%s /SC ONLOGON ":##vSchStr) ELSE +
+										##vSchStr
+		90	: 	Set		: vSchStr	: $$Sprintf:"%s /TR %s /NOGUI /NOINILOAD /ACTION:Call:U001ABackup%s":##vSchStr:@TallyPath:@Quot
+		100	: 	Return	: ##vSchStr
+		[Function: U001ADays]
+			Returns		: String
+			Variable	: vStr	: String	: ""
+			Local Formula	: Comma	: IF $$IsEmpty:##vStr THEN "" ELSE ','
+			10	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:SUN)	: Set	: vStr	: "SUN"
+			20	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:MON)	: Set	: vStr	: ##vStr + @Comma + "MON"
+			30	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:TUE)	: Set	: vStr	: ##vStr + @Comma + "TUE"
+			40	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:WED)	: Set	: vStr	: ##vStr + @Comma + "WED"
+			50	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:THU)	: Set	: vStr	: ##vStr + @Comma + "THU"
+			60	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:FRI)	: Set	: vStr	: ##vStr + @Comma + "FRI"
+			70	: Do If	: ($$ListValue:U001ABkp.U001ASch:##TN:SAT)	: Set	: vStr	: ##vStr + @Comma + "SAT"
+			80	: Return	: ##vStr
+		
+	
+	
+;;Scheduler Interface
+[Function: U001ABackupQ]
+	00	: If		: (NOT $$IsEmpty:@@U001Password)
+	01	: 	Execute	: U001AAuth
+	02	: 	Do If		: (NOT $$LastResult)	: Return	: False
+	03	: End If
+	10	: Do If	: ($$IsFileExists:@@U001AVarFile)	: Load Variables	: @@U001AVarFile	: U001ABkp
+	20	: Execute	: U001ABackup
+	30	: Do If		: ($$LastResult)	: Call	: U001ASaveFile
+	[Function: U001ASaveFile]
+		30	: List Key Sort	: U001ABkp.U001ASch
+		40	: Save Variable	: @@U001AVarFile	: U001ABkp
+	[Report: U001AAuth]
+		Title	: "Authorize"
+		Form	: U001AAuth
+		Auto	: Yes
+		[Form: U001AAuth]
+			Part	: U001AAuth
+			[Part: U001AAuth]
+				Lines	: U001AAuth
+				[Line: U001AAuth]
+					Fields	: DSP MailAuthPassword
+					Local	: Field	: DSP MailAuthPassword	: Option	: U001AAuth
+					[!Field: U001AAuth]
+						Delete	: Storage
+						Delete	: Modifies
+						Delete	: Inactive
+						Validate	: $$ExactMatch:@@U001Password:$$Value
+[Object: U001ABackup]
+	Storage	: IsBackup		: Logical
+	Storage	: Destination	: String
+	Storage	: Destination2	: String
+	Storage	: Format		: String
+	Storage	: AutoDelete	: Logical
+	Storage	: NumFolders	: Number
+	Storage	: NumSubFolder	: Number
+	Collection	: ScheduleList		: U001ASch
+	Collection	: DataSourceList	: U001ACmpSrc
+	[Object: U001ASch]
+		Storage	: Name		: String
+		Storage	: Schedule	: String
+		Storage	: MON		: Logical
+		Storage	: TUE		: Logical
+		Storage	: WED		: Logical
+		Storage	: THU		: Logical
+		Storage	: FRI		: Logical
+		Storage	: SAT		: Logical
+		Storage	: SUN		: Logical
+		Storage	: StartTime	: String
+		Storage	: RepeatInterval	: Number
+	[Object: U001ACmpSrc]
+		Storage	: Source	: String
+		Collection	: Companies	: U001ACmp
+		[Object: U001ACmp]
+			Storage	: Name		: String
+			Storage	: CompanyNumber	: String
+
+[Report: U001ABackup]
+	Title	: $$U001ABackupTit
+	Object	: U001ABackup
+	Form	: U001ABackup
+	[Function: U001ABackupTit]
+		Variable	: ID1	: Number
+		01	: Do If	: (NOT $$IsEMpty:$Destination)		: Return			: "Auto Back-up settings"
+		02	: Do If	: ($$IsFileExists:@@U001AVarFile)	: Load Variables	: @@U001AVarFile	: U001ABkp
+		10	: Set Value	: IsBackup		: ##U001ABkp.IsBackup
+		20	: Set Value	: Destination	: ##U001ABkp.Destination
+		21	: Set Value	: Destination2	: ##U001ABkp.Destination2
+		30	: Set Value	: Format		: ##U001ABkp.Format
+		40	: Set Value	: AutoDelete	: ##U001ABkp.AutoDelete
+		50	: Set Value	: NumFolders	: ##U001ABkp.NumFolders
+		60	: Set Value	: NumSubFolder	: ##U001ABkp.NumSubFolder
+		70	: For Each	: ITR	: U001ABkp.U001ASch
+		80	: 	Insert Collection Object	: ScheduleList
+		90	: 		Set Value	: Name		: $$ListValue:U001ABkp.U001ASch:##ITR:Name
+		100	: 		Set Value	: Schedule	: $$ListValue:U001ABkp.U001ASch:##ITR:Schedule
+		110	: 		Set Value	: StartTime	: $$ListValue:U001ABkp.U001ASch:##ITR:StartTime
+		120	: 		Set Value	: RepeatInterval	: $$ListValue:U001ABkp.U001ASch:##ITR:RepeatInterval
+		130	: 		Set Value	: MON	: $$ListValue:U001ABkp.U001ASch:##ITR:MON
+		140	: 		Set Value	: TUE	: $$ListValue:U001ABkp.U001ASch:##ITR:TUE
+		150	: 		Set Value	: WED	: $$ListValue:U001ABkp.U001ASch:##ITR:WED
+		160	: 		Set Value	: THU	: $$ListValue:U001ABkp.U001ASch:##ITR:THU
+		170	: 		Set Value	: FRI	: $$ListValue:U001ABkp.U001ASch:##ITR:FRI
+		180	: 		Set Value	: SAT	: $$ListValue:U001ABkp.U001ASch:##ITR:SAT
+		190	: 		Set Value	: SUN	: $$ListValue:U001ABkp.U001ASch:##ITR:SUN
+		200	: 	Set Target	: ..
+		210	: End For
+		220	: For Each	: Source	: U001ABkp.U001ACmp
+		230	: 	Insert Collection Object	: DataSourceList
+		240	: 		Set Value	: Source	: $$ListValue:U001ABkp.U001ACmp:##Source:Source
+		250	: 		Set			: ID1	: $$ListIndex:U001ABkp.U001ACmp:##Source:Source
+		260	: 		For Each	: CMP	: U001ABkp.U001ACmp[##ID1].U001ACmpList
+		270	: 			Insert Collection Object	: Companies
+		280	: 				Set Value	: Name			: $$ListValue:U001ABkp.U001ACmp[##ID1].U001ACmpList:##CMP:Name
+		290	: 				Set Value	: CompanyNumber	: $$ListValue:U001ABkp.U001ACmp[##ID1].U001ACmpList:##CMP:CompanyNumber
+		300	: 			Set Target	: ..
+		310	: 		End For
+		320	: 	Set Target	: ..
+		330	: End For
+		R1	: Return	: "Auto Back-up settings"
+	[Function: U001ASaveVar]
+		Variable	: ID1, ID2	: Number
+		01	: List Delete	: U001ABkp.U001ASch
+		02	: List Delete	: U001ABkp.U001ACmp
+		10	: Set		: U001ABkp.IsBackup		: $IsBackup
+		20	: Set 		: U001ABkp.Destination	: $Destination
+		21	: Set 		: U001ABkp.Destination2	: $Destination2
+		30	: Set 		: U001ABkp.Format		: $Format
+		40	: Set		: U001ABkp.AutoDelete	: $AutoDelete
+		50	: Set		: U001ABkp.NumFolders	: $NumFolders
+		60	: Set		: U001ABkp.NumSubFolder	: $NumSubFolder
+		70	: Walk Collection	: ScheduleList
+		80	: 	List Add	: U001ABkp.U001ASch	: $Name	: $Name
+		90	: 	Set	: ID1	: $$ListIndex:U001ABkp.U001ASch:$Name
+		100	: 	Set	: U001ABkp.U001ASch[##ID1].Name				: $Name
+		110	: 	Set	: U001ABkp.U001ASch[##ID1].Schedule			: $Schedule
+		120	: 	Set	: U001ABkp.U001ASch[##ID1].StartTime		: $StartTime
+		121	: 	Set	: U001ABkp.U001ASch[##ID1].RepeatInterval	: $RepeatInterval
+		130	: 	Set	: U001ABkp.U001ASch[##ID1].MON				: $MON
+		140	: 	Set	: U001ABkp.U001ASch[##ID1].TUE				: $TUE
+		150	: 	Set	: U001ABkp.U001ASch[##ID1].WED				: $WED
+		160	: 	Set	: U001ABkp.U001ASch[##ID1].THU				: $THU
+		170	: 	Set	: U001ABkp.U001ASch[##ID1].FRI				: $FRI
+		180	: 	Set	: U001ABkp.U001ASch[##ID1].SAT				: $SAT
+		190	: 	Set	: U001ABkp.U001ASch[##ID1].SUN				: $SUN
+		200	: End Walk
+		210	: Walk Collection	: DataSourceList
+		220	: 	List Add	: U001ABkp.U001ACmp	: $Source	: $Source
+		230	: 	Set	: ID1	: $$ListIndex:U001ABkp.U001ACmp:$Source
+		240	: 	Set	: U001ABkp.U001ACmp[##ID1].Source	: $Source
+		250	: 	Walk Collection	: Companies
+		260	: 		List Add	: U001ABkp.U001ACmp[##ID1].U001ACmpList	: $CompanyNumber	: $Name
+		270	: 		Set		: ID2	: $$ListIndex:U001ABkp.U001ACmp[##ID1].U001ACmpList:$CompanyNumber
+		280	: 		Set		: U001ABkp.U001ACmp[##ID1].U001ACmpList[##ID2].Name			: $Name
+		290	: 		Set		: U001ABkp.U001ACmp[##ID1].U001ACmpList[##ID2].CompanyNumber	: $CompanyNumber
+		300	: 	End Walk
+		310	: End Walk
+		320	: Call	: U001ASaveFile
+		340	: Call	: U001ABackupLV
+	[Form: U001ABackup]
+		Part	: U001ABackupA, U001AAutoDel, U001ABkpCos, U001ABkpSch
+		Local	: Field	: Default	: Style		: Normal Serif
+		Local	: Style	: Default	: Height	: @@NormalSize + 1
+		On		: Form Accept	: Yes	: Call	: U001ASaveVar
+		Background	: @@SV_CMPCONFIG
+		Space Top		: 1
+		Space Bottom	: 1
+		Space Left		: 1
+		Space Right		: 1
+		[Part: U001ABackupA]
+			Lines	: U001AIsBkp, U001ADestin, U001ADestin2, U001AFormat
+			[Line: U001AIsBkp]
+				Fields	: Long Prompt, U001AIsBkp
+				Local	: Field	: Long Prompt	: Set as	: "Enable Auto-Backup?"
+				[Field: U001AIsBkp]
+					Use			: Logical Field
+					Storage		: IsBackup
+			[Line: U001ADestin]
+				Fields	: Long Prompt, U001ADestin
+				Local	: Field	: Long Prompt	: Set as	: "Backup Location : "				
+				[Field: U001ADestin]
+					Use			: Name Field
+					Storage		: Destination
+					Validate	: NOT #U001AIsBkp OR $$IsDirectory:$$Value
+					Case		: Normal
+					Width		: @@LongWidth * 1.2
+					Max			: 255
+					Skip		: NOT #U001AIsBkp
+			[Line: U001ADestin2]
+				Fields	: Long Prompt, U001ADestin2
+				Local	: Field	: Long Prompt	: Set as	: "Adnl. Backup Location (if any) : "				
+				[Field: U001ADestin2]
+					Use			: Name Field
+					Storage		: Destination2
+					Validate	: NOT #U001AIsBkp OR $$IsEmpty:$$Value OR ($$Value != #U001ADestin AND $$IsDirectory:$$Value)
+					Case		: Normal
+					Width		: @@LongWidth * 1.2
+					Max			: 255
+					Skip		: NOT #U001AIsBkp
+			[Line: U001AFormat]
+				Fields	: Long Prompt, U001AFormat
+				Local	: Field	: Long Prompt	: Set as	: "Backup Format : "
+				;;Invisible	: NOT @@U001AIsZipSupported
+				[Field: U001AFormat]
+					Use			: Name Field
+					Storage		: Format
+					Case		: Normal
+					Skip		: NOT #U001AIsBkp
+					Set Always	: Yes
+					Show Table	: Always
+					Table		: U001AFormats
+					Common Table	: No
+					Control		: U001AFormatNotSupp	: $$Value CONTAINS "Zip" AND NOT @@U001AIsZipSupported
+					[Table: U001AFormats]
+						Title	: "Compression Format"
+						List	: "ZIP", "TBK", "Zipped TBK"
+					[System: Formula]
+						U001AFormatNotSupp	: $$LocaleString:"Zip feature not supported below rel.4.7"
+		[Part: U001AAutoDel]
+			Lines	: U001AIsAutoDel, U001ADelDays, U001ADelSubFlds
+			[Line: U001AIsAutoDel]
+				Fields	: Long Prompt, U001AIsAutoDel
+				Local	: Field	: Long Prompt	: Set as	: "Delete Archived Folders?"
+				[Field: U001AIsAutoDel]
+					Use			: Logical Field
+					Storage		: AutoDelete
+					Skip		: NOT #U001AIsBkp
+					Control		: U001AIsAutoDelNotSupported	: $$Value AND NOT @@U001AIsDelSupported
+					Notify		: U001AIsAutoDelNotify	: $$Value
+					[System: Formula]
+						U001AIsAutoDelNotSupported	: $$LocaleString:"Auto-Deletion not supported below Rel. 3.4."
+						U001AIsAutoDelNotify		: $$LocaleString:"Pl. ensure that you provided dedicated folder for backup locations when deletion is enabled!"
+			[Line: U001ADelDays]
+				Fields	: Long Prompt, U001ADelDays
+				Local	: Field	: Long Prompt	: Set as	: "Number of Folders (if any) : "
+				Local	: Field	: Long Prompt	: Indent	: 2
+				Local	: Field	: Default	: Inactive	: NOT #U001AIsAutoDel
+				[Field: U001ADelDays]
+					Use			: Number Field
+					Format		: "NoZero,Decimals:0"
+					Storage		: NumFolders
+					Skip		: NOT #U001AIsBkp
+			[Line: U001ADelSubFlds]
+				Fields	: Long Prompt, U001ADelSubFlds
+				Local	: Field	: Long Prompt	: Set as	: "Number of Files (if any) : "
+				Local	: Field	: Long Prompt	: Indent	: 2
+				Local	: Field	: Default	: Inactive	: NOT #U001AIsAutoDel
+				[Field: U001ADelSubFlds]
+					Use			: Number Field
+					Format		: "NoZero,Decimals:0"
+					Storage		: NumSubFolder
+					Skip		: NOT #U001AIsBkp
+		[Part: U001ABkpCos]
+			Border	: Thin Top
+			Lines	: U001ABkpCos
+			Repeat	: U001ABkpCos	: DataSourceList
+			Break On	: $$IsEmpty:$Source
+			Scroll		: Vertical
+			[Line: U001ABkpCos]
+				Fields	: Short Prompt, U001ABkpSrc
+				Explode	: U001ABkpCosList	: NOT $$IsEmpty:$Source
+				Local	: Field	: Short Prompt	: Set as	: "Source " + $$String:$$Line
+				Local	: Field	: Short Prompt	: Width		: @@NumberWidth
+				Local	: Field	: Short Prompt	: Style		: Tiny Italic
+				Local	: Field	: Short Prompt	: Local		: Style	: Default	: Height	: @@SmallSize - 1
+				Local	: Field	: Short Prompt	: Border	: Thin Bottom
+				Space Top	: IF $$Line > 1 THEN 0.3 ELSE 0
+				[Field: U001ABkpSrc]
+					Use		: Name Field
+					Max		: 255
+					Case	: Normal
+					;;Validate	: $$IsEmpty:$$Value OR $$IsDirectory:$$Value
+					Storage		: Source
+					Skip			: NOT #U001AIsBkp
+					Unique		: Yes
+					Variable	: SVBackupSrc
+					Set By Condition	: ($$Line = 1 AND $$IsEmpty:$$Value)	: ##SVCurrentPath
+					Width		: @@LongWidth * 1.5
+				[Part: U001ABkpCosList]
+					Line	: U001ABkpCosList
+					Repeat	: U001ABkpCosList	: Companies
+					Break On	: $$IsEnd:$Name
+					[Line: U001ABkpCosList]
+						Fields	: U001ABkpCoName, U001ABkpCoNo
+						Indent	: @@NumberWidth+1
+						[Field: U001ABkpCoName]
+							Use			: Name Field
+							Width		: @@LongWidth * 1.5
+							Storage		: Name
+							Table		: U001ABkpCosOnDiskList	: $$Line = 1
+							Table		: U001ABkpCosOnDiskList, EndOfList	: $$Line > 1
+							Validate		: $$Value != "No Companies on Disk !"
+							Common Table	: No
+							Skip			: NOT #U001AIsBkp
+							Unique			: Yes
+							Common Table	: No
+							Show Table		: Always
+							[Collection: U001ABkpCosOnDiskList]
+								Use			: List of All Backup Companies
+								Child Of	: #SVBackupSrc
+								Unique		: $Name
+								Filter		: U001ABkpIsNotVault
+								[System: Formula]
+									U001ABkpIsNotVault	: NOT ($$StringPart:$Name:0:1 EQUALS $$StrByCharCode:4 AND $$StringPart:$Name:(($$StringLength:$Name)-1):1 EQUALS $$StrByCharCode:4)
+						[Field: U001ABkpCoNo]
+							Use			: Short Name Field
+							Storage		: CompanyNumber
+							Set Always	: Yes
+							Skip		: Yes
+							Width		: 5
+							Invisible	: Yes
+							Set as		: $$Table:U001ABkpCoName:$CompanyNumber
+		;;Task Scheduler
+		[Part: U001ABkpSch]
+			Border	: Thin Top
+			Scroll	: Vertical
+			Height	: 10
+			Line	: U001ABkpSchT, U001ABkpSch
+			Repeat	: U001ABkpSch	: ScheduleList
+			Break On	: $$IsEnd:$Schedule OR $$Line > @@U001AMaxTasks
+			[Line: U001ABkpSchT]
+				Use		: U001ABkpSch
+				Local	: Field	: Default	: Type		: String
+				Local	: Field	: Default	: Delete	: Valid
+				Local	: Field	: Default	: Delete	: Storage
+				Local	: Field	: Default	: Inactive	: No
+				Local	: Field	: Default	: Set as	: @UMJH
+				Local	: Field	: Default	: Lines		: 2
+				Local	: Field	: Default	: Delete	: Modifies
+				Local	: Field	: Default	: Delete	: Table
+				Border	: Thin Bottom
+			[Line: U001ABkpSch]
+				Fields	: U001ASlNo, U001AMethod, U001ATime, U001ANum
+				Local	: Field	: Short Prompt	: Set Always: Yes
+				Local	: Field	: Short Prompt	: Skip		: Yes
+				Local	: Field	: Short Prompt	: Style		: Tiny
+				[Field: U001ASlNo]
+					Use		: Short Name Field
+					Width	: 5
+					Set as	: $$Line
+					Storage	: Name
+					Set Always	: Yes
+					Skip	: Yes
+					UMJH	: "SlNo"
+				[Field: U001AMethod]
+					Use			: Short Name Field
+					Table		: U001AMethod, EndOfList
+					Show Table	: Always
+					Storage		: Schedule
+					Skip			: NOT #U001AIsBkp
+					UMJH		: "Schedule"
+					[Collection: U001AMethod]
+						Title		: "Machine Events"
+						List Name	: "Daily At", "Repeated", "Weekly", "On Idle", "On Logon"
+				[Field: U001ATime]
+					Use		: Short Name Field
+					Max		: 5
+					Valid	: @IsInactive OR ($$StringLength:$$Value = 5 AND $$ExactMatch:":":($$StringPart:$$Value:2:1))
+					Local Formula	: IsInactive	: #U001AMethod NOT IN ("Daily At", "Weekly")
+					Inactive	: @IsInactive
+					Sub Form	: U001ABkpWeeks	: #U001AMethod = "Weekly"
+					Case	: Normal
+					Storage	: StartTime
+					Skip			: NOT #U001AIsBkp
+					UMJH	: $$LocaleString:"Time\n(HH:MM)"
+				[Field: U001ANum]
+					Use		: Number Field
+					Format	: "NoZero,NoComma"
+					Local Formula	: IsInactive	: #U001AMethod NOT IN ("Repeated")
+					Inactive	: @IsInactive
+					Validate	: @IsInactive OR NOT $$IsEmpty:$$Value
+					Storage		: RepeatInterval
+					Skip			: NOT #U001AIsBkp
+					UMJH	: $$LocaleString:"Interval\n(Minutes)"
+				[Report: U001ABkpWeeks]
+					Title	: "Weekly Schedule"
+					Form	: U001ABkpWeeks
+					Auto	: Yes
+					[Form: U001ABkpWeeks]
+						Part	: U001ABkpWeeks
+						Background	: @@SV_CMPCONFIG
+						[Part: U001ABkpWeeks]
+							Lines	: U001ABkpWeeksT, U001ABkpWeeks
+							Common Border	: Yes
+							[Line: U001ABkpWeeksT]
+								Use		: U001ABkpWeeks
+								Local	: Field	: Default	: Type	: String
+								Local	: Field	: Default	: Set as: @UMJH
+								Local	: Field	: Default	: Skip	: Yes
+								Local	: Field	: Default	: Delete	: Table
+								Local	: Field	: Default	: Delete	: Storage
+								Local	: Field	: Default	: Delete	: Modifies
+								Local	: Field	: Default		: Style		: Small Bold
+								Border	: Thin Top
+							[Line: U001ABkpWeeks]
+								Fields	: U001AWkSun, U001AWkMon, U001AWkTue, U001AWkWed, U001AWkThu, U001AWkFri, U001AWkSat
+								Local	: Field	: Default		: Border	: Thin Left
+								Local	: Field	: Default		: Style		: Small
+								Local	: Field	: U001AWkSat	: Border	: Thin Left Right
+								Border	: Thin Top Bottom
+								[Field: U001AWkSun]
+									Use			: Logical Field
+									Storage		: SUN
+									UMJH		: "Sun?"
+								[Field: U001AWkMon]
+									Use			: Logical Field
+									Storage		: MON
+									UMJH		: "Mon?"
+								[Field: U001AWkTue]
+									Use			: Logical Field
+									Storage		: TUE
+									UMJH		: "Tue?"
+								[Field: U001AWkWED]
+									Use			: Logical Field
+									Storage		: WED
+									UMJH		: "Wed?"
+								[Field: U001AWkThu]
+									Use			: Logical Field
+									Storage		: THU
+									UMJH		: "Thu?"
+								[Field: U001AWkFri]
+									Use			: Logical Field
+									Storage		: FRI
+									UMJH		: "Fri?"
+								[Field: U001AWkSat]
+									Use			: Logical Field
+									Storage		: SAT
+									UMJH		: "Sat?"
+
+
+
